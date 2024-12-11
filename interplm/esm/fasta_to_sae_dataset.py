@@ -46,9 +46,18 @@ def get_activations(
             layer: output.hidden_states[layer] for layer in layers}
 
     # Create a mask for non-padding tokens (tokens 0,1,2 are cls/pad/eos respectively)
-    mask = batch_tokens > 2
+    mask = batch_tokens > 2 # NOTE: CHANGE TO > 3 FOR GLM
     return {layer: rep[mask] for layer, rep in token_representations.items()}
 
+
+"""
+1. utils.fasta --> sequences, metadata
+2. sequences --> concat "<+>" 
+3. embed_list_of_prot_seqs(gLM_650m)
+
+"""
+
+# this will be a combination of embed_list_of_multimodal_seqs() but with the per-layer activation saving code below
 
 def embed_fasta_file_for_all_layers(
     esm_model_name: str,
@@ -187,7 +196,7 @@ def process_shard_range(
         end_shard = len(fasta_files) - 1
 
     for i in range(start_shard, end_shard + 1):
-        embed_fasta_file_for_all_layers(
+        embed_fasta_file_for_all_layers( # NOTE: call our GLM version here
             esm_model_name=esm_model_name,
             corrupt_esm=corrupt_esm,
             fasta_file=fasta_dir / f"shard_{i}.fasta",

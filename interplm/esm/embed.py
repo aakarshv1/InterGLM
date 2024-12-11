@@ -66,6 +66,39 @@ def shuffle_individual_parameters(model, seed=42):
 
     return model
 
+def embed_list_of_multimodal_seqs(
+    seq_list: List[str],
+    model_name: str,
+    layer: int,
+    toks_per_batch: int = 4096,
+    truncation_seq_length: int = None,
+    device: torch.device = None,
+):
+    if device is None:
+        device = get_device()
+
+    # Load model and tokenizer
+    if model_name == "gLM2_150M":
+        tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_150M", trust_remote_code=True)
+        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+    elif model_name == "gLM2_650M_embed":
+        # same as above, but use path "tattabio/gLM2_650M_embed"
+        tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_650M_embed", trust_remote_code=True)
+        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
+    else:
+        raise ValueError(f"Model {model_name} not supported")
+    model = model.to(device)
+    model.eval()
+
+    # Tokenize sequence
+    inputs = tokenizer(seq_list, return_tensors='pt', padding=True)
+    with torch.no_grad():
+        embeddings = model(inputs.input_ids.cuda(), output_hidden_states=True)
+        embeddings = embeddings.hidden_states[layer]  
+
+    assert embeddings.shape[0] == len(seq_list), "Mismatch between input sequences and embeddings"
+    return embeddings
+
 
 def embed_list_of_prot_seqs(
     protein_seq_list: List[str],
@@ -141,6 +174,7 @@ def embed_list_of_prot_seqs(
     return all_embeddings
 
 
+
 def embed_single_sequence(
     sequence: str,
     model_name: str,
@@ -148,7 +182,7 @@ def embed_single_sequence(
     device: torch.device = None
 ) -> torch.Tensor:
     """
-    Embed a single protein sequence using ESM model.
+    Embed a single protein or geomic sequence using various models.
 
     This method is optimized for quick, individual sequence processing, making it
     ideal for interactive applications like dashboards. Unlike batch processing
@@ -156,7 +190,7 @@ def embed_single_sequence(
     making it more suitable for concurrent user queries.
 
     Args:
-        sequence: Protein sequence string to embed
+        sequence: Protein or genomic sequence string to embed.
         model_name: Name of the ESM model to use
         layer: Which transformer layer to extract embeddings from
         device: Computation device.
@@ -169,21 +203,35 @@ def embed_single_sequence(
         device = get_device()
 
     # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(f"facebook/{model_name}")
-    model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
+    if model_name == "gLM2_150M":
+        tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_150M", trust_remote_code=True)
+        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+    elif model_name == "gLM_650M_embed":
+        # same as above, but use path "tattabio/gLM2_650M_embed"
+        tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_650M_embed", trust_remote_code=True)
+        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(f"facebook/{model_name}")
+        model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
     model = model.to(device)
     model.eval()
 
     # Tokenize sequence
-    inputs = tokenizer(sequence, return_tensors="pt")
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-
-    # Get embeddings
-    with torch.no_grad():
-        outputs = model(**inputs, output_hidden_states=True)
-        # Get embeddings from specified layer
-        embeddings = outputs.hidden_states[layer]
-        # Remove batch dimension and special tokens
-        embeddings = embeddings[0, 1:-1]
+    if model_name == "gLM2_150M" or model_name == "gLM_650M_embed":
+        inputs = tokenizer([sequence], return_tensors='pt')
+        with torch.no_grad():
+            embeddings = model(inputs.input_ids.cuda(), output_hidden_states=True)
+            embeddings = embeddings.hidden_states[layer]  
+            embeddings = embeddings[0]
+    else:
+        inputs = tokenizer(sequence, return_tensors="pt")
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        # Get embeddings
+        with torch.no_grad():
+            outputs = model(**inputs, output_hidden_states=True)
+            # Get embeddings from specified layer
+            embeddings = outputs.hidden_states[layer]
+            # Remove batch dimension and special tokens - TODO: check if diff for GLM2
+            embeddings = embeddings[0, 1:-1]
 
     return embeddings

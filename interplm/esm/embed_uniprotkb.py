@@ -1,7 +1,8 @@
 from pathlib import Path
 import pandas as pd
 import torch
-from interplm.esm.embed import embed_list_of_prot_seqs
+from interplm.esm.embed import embed_list_of_prot_seqs, embed_list_of_multimodal_seqs
+
 
 def df_of_prot_seqs_to_pt(
     protein_df,
@@ -31,14 +32,23 @@ def df_of_prot_seqs_to_pt(
     # Extract protein sequences from the DataFrame
     protein_seq_list = protein_df[seq_col].tolist()
     # Call embed_list_of_prot_seqs
-    embeddings = embed_list_of_prot_seqs(
-        protein_seq_list=protein_seq_list,
-        esm_model_name=esm_name,
-        layer=layer,
-        toks_per_batch=toks_per_batch,
-        device=device,
-        corrupt=corrupt,
-    )
+    if esm_name == "gLM2_150M" or esm_name == "gLM_650M_embed":
+        embeddings = embed_list_of_multimodal_seqs(
+            seq_list=protein_seq_list,
+            model_name=esm_name,
+            layer=layer,
+            toks_per_batch=toks_per_batch,
+            device=device,
+        )
+    else:
+        embeddings = embed_list_of_prot_seqs(
+            protein_seq_list=protein_seq_list,
+            esm_model_name=esm_name,
+            layer=layer,
+            toks_per_batch=toks_per_batch,
+            device=device,
+            corrupt=corrupt,
+        )
     # Convert list of embeddings to a single tensor
     all_embeddings = torch.cat([emb for emb in embeddings], dim=0)
     # Save the tensor
