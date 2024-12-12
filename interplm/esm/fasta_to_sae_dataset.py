@@ -7,19 +7,23 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
+from data_processing import read_fasta
+
 import numpy as np
 import torch
 from esm import FastaBatchedDataset
 from tqdm import tqdm
-
+from transformers import AutoTokenizer, AutoModel
 from interplm.esm.embed import get_model_converter_alphabet
-
+    
 
 def get_activations(
     model: torch.nn.Module,
+    model_name: str,
     batch_tokens: torch.Tensor,
     batch_mask: torch.Tensor,
-    layers: List[int]
+    layers: List[int],
+
 ) -> dict:
     """
     Extract all activation values from multiple layers of the ESM model.
@@ -46,18 +50,99 @@ def get_activations(
             layer: output.hidden_states[layer] for layer in layers}
 
     # Create a mask for non-padding tokens (tokens 0,1,2 are cls/pad/eos respectively)
-    mask = batch_tokens > 2 # NOTE: CHANGE TO > 3 FOR GLM
+    mask = batch_tokens > 3 if model_name.startswith("gLM2") else batch_tokens > 2 # NOTE: CHANGE TO > 3 FOR GLM (ESM2 is first 3 tokens as padding/cls/etc, glm is first 4)
     return {layer: rep[mask] for layer, rep in token_representations.items()}
 
 
 """
-1. utils.fasta --> sequences, metadata
-2. sequences --> concat "<+>" 
-3. embed_list_of_prot_seqs(gLM_650m)
+1. utils.fasta --> sequences, metadata (done)
+2. sequences --> concat "<+>" (done)
+3. embed_list_of_prot_seqs(gLM_650m) (in progress)
 
 """
 
 # this will be a combination of embed_list_of_multimodal_seqs() but with the per-layer activation saving code below
+
+def embed_fasta_file_for_all_layers_glm(
+    model_name: str,
+    fasta_file: Path,
+    output_dir: Path,
+    layers: List[int],
+    shard_num: int,
+    toks_per_batch: int = 1024,
+    truncation_seq_length: int = 1022,    
+    batch_size: int = 16,
+):
+    """
+    Process a FASTA file through a gLM model and save layer activations.
+    """
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(f"tattabio/{model_name}", trust_remote_code=True)
+    model = AutoModel.from_pretrained(f"tattabio/{model_name}", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+    alphabet = tokenizer.get_vocab()
+
+    metadata, sequences = read_fasta(fasta_file) # method that seyone is currently writing to grab all sequences from the fasta file, which is a shard created by process_shard_range
+    print(f"Read {fasta_file} with {len(sequences):,} sequences")
+
+    ## Concatenate sequences with "<+>" separator
+    sequences = ["<+>".join(sequences)]
+    sequences = [sequence[:truncation_seq_length] for sequence in sequences]
+
+    total_tokens = 0
+    all_activations = {layer: [] for layer in layers}
+    toks = tokenizer(sequences, return_tensors='pt', padding=True)
+    # reshape tokens into batches of size toks_per_batch
+    reshaped_toks = toks.input_ids.view(-1, batch_size, toks.input_ids.shape[1])
+
+    for toks in tqdm(reshaped_toks, desc="Processing batches"):
+        activations = get_activations(model,
+                                      model_name,
+                                      toks.to(device),
+                                      (toks != alphabet['<pad>']).to(device),
+                                      layers=layers)
+        for layer in layers:
+            all_activations[layer].append(activations[layer])
+
+        # Count total tokens processed
+        total_tokens += activations[layers[0]].shape[0]
+
+        torch.cuda.empty_cache()
+
+    # Save activations and metadata for each layer in the proper directory structure
+    for layer in layers:
+        layer_output_dir = output_dir / f"layer_{layer}" / f"shard_{shard_num}"
+        layer_output_dir.mkdir(parents=True, exist_ok=True)
+        output_file = layer_output_dir / "activations.pt"
+        metadata_file = layer_output_dir / "metadata.json"
+
+        # Concatenate all activations for this layer
+        layer_activations = torch.cat(all_activations[layer])
+
+        # Shuffle the activations
+        shuffled_indices = torch.randperm(total_tokens)
+        layer_activations = layer_activations[shuffled_indices]
+
+        # Save the tensor
+        torch.save(layer_activations, output_file)
+        print(f"Saved activations for layer {layer}, shard {shard_num} to {output_file}")
+
+        # Save metadata
+        metadata = {
+            "model": model_name,
+            "total_tokens": total_tokens,
+            "d_model": model.config.hidden_size,
+            "dtype": str(layer_activations.dtype),
+            "layer": layer,
+            "shard": shard_num,
+        }
+        with open(metadata_file, "w") as f:
+            json.dump(metadata, f)
+
+
+    
 
 def embed_fasta_file_for_all_layers(
     esm_model_name: str,
@@ -196,15 +281,26 @@ def process_shard_range(
         end_shard = len(fasta_files) - 1
 
     for i in range(start_shard, end_shard + 1):
-        embed_fasta_file_for_all_layers( # NOTE: call our GLM version here
-            esm_model_name=esm_model_name,
-            corrupt_esm=corrupt_esm,
-            fasta_file=fasta_dir / f"shard_{i}.fasta",
-            output_dir=output_dir,
-            layers=layers,
-            shard_num=i,
-        )
-
+        if esm_model_name[:3] == "esm":
+            embed_fasta_file_for_all_layers(
+                esm_model_name=esm_model_name,
+                corrupt_esm=corrupt_esm,
+                fasta_file=fasta_dir / f"shard_{i}.fasta",
+                output_dir=output_dir,
+                layers=layers,
+                shard_num=i,
+            )
+        elif esm_model_name[:3] == "gLM2":
+            #TODO: call GLM version
+            embed_fasta_file_for_all_layers_glm(
+                model_name=esm_model_name,
+                fasta_file=fasta_dir / f"shard_{i}.fasta",
+                output_dir=output_dir,
+                layers=layers,
+                shard_num=i,
+            )
+        else:
+            raise ValueError("Model not supported")
 
 if __name__ == "__main__":
     from tap import tapify

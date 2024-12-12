@@ -44,3 +44,22 @@ def fetch_uniprot_sequence(uniprot_id: str) -> dict:
         'Protein names': description,
         'Sequence': sequence
     }
+
+
+def read_fasta(fasta_file):
+    """Read a FASTA file and return a list of sequences and metadata"""
+    sequences = []
+    metadata = []
+    with open(fasta_file) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith(">"):
+                metadata.append(line)
+                sequences.append("")
+            else:
+                if "*" in line:
+                    print("removing * from amino acid sequence. TODO, what are these?")
+                    line = line.replace("*", "")
+                sequences[-1] += line
+    return metadata, sequences
+

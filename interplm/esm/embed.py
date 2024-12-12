@@ -90,6 +90,7 @@ def embed_list_of_multimodal_seqs(
     model = model.to(device)
     model.eval()
 
+    # TODO: handle pre-forward pass attn_mask and post embedding 
     # Tokenize sequence
     inputs = tokenizer(seq_list, return_tensors='pt', padding=True)
     with torch.no_grad():
@@ -205,11 +206,11 @@ def embed_single_sequence(
     # Load model and tokenizer
     if model_name == "gLM2_150M":
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_150M", trust_remote_code=True)
-        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+        model = AutoModel.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
     elif model_name == "gLM_650M_embed":
         # same as above, but use path "tattabio/gLM2_650M_embed"
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_650M_embed", trust_remote_code=True)
-        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
+        model = AutoModel.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
     else:
         tokenizer = AutoTokenizer.from_pretrained(f"facebook/{model_name}")
         model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
