@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from data_processing.utils import read_fasta
+from interplm.data_processing.utils import read_fasta
 
 import numpy as np
 import torch
@@ -88,20 +88,46 @@ def embed_fasta_file_for_all_layers_glm(
     print(f"Read {fasta_file} with {len(sequences):,} sequences")
 
     ## Concatenate sequences with "<+>" separator
-    sequences = ["<+>".join(sequences)]
+    sequences = ["<+>" + sequence for sequence in sequences]
     sequences = [sequence[:truncation_seq_length] for sequence in sequences]
+
+    print(len(sequences))
 
     total_tokens = 0
     all_activations = {layer: [] for layer in layers}
-    toks = tokenizer(sequences, return_tensors='pt', padding=True)
-    # reshape tokens into batches of size toks_per_batch
-    reshaped_toks = toks.input_ids.view(-1, batch_size, toks.input_ids.shape[1])
+    encodings = tokenizer(sequences, return_tensors='pt', padding=True)
+    
+    # reshape tokens into batches of size (num batches, batch_size, seq_length)
+    print(encodings)
+    toks = encodings.input_ids
+    attention_mask = encodings.attention_mask
 
-    for toks in tqdm(reshaped_toks, desc="Processing batches"):
+    dummy_seqs_needed = (len(toks) // batch_size + 1) * batch_size - len(toks)
+    
+    # Create dummy sequences for padding
+    dummy_toks = torch.full((dummy_seqs_needed, toks.shape[1]), alphabet['<pad>'], dtype=torch.long)
+    dummy_attention_mask = torch.zeros((dummy_seqs_needed, attention_mask.shape[1]), dtype=torch.long)
+    
+    # Concatenate dummy sequences to input_ids and attention_mask
+    toks = torch.cat([toks, dummy_toks], dim=0)
+    attention_mask = torch.cat([attention_mask, dummy_attention_mask], dim=0)
+
+    # Reshape into batches
+    reshaped_toks = toks.view(-1, batch_size, toks.shape[1])
+    reshaped_attention_mask = attention_mask.view(-1, batch_size, attention_mask.shape[1])
+
+    assert reshaped_toks.shape[0] == len(sequences) // batch_size + 1 if len(sequences) % batch_size != 0 else len(sequences) // batch_size
+
+    print(reshaped_attention_mask.shape, reshaped_toks.shape)
+
+    for batch_toks, batch_mask in tqdm(zip(reshaped_toks, reshaped_attention_mask), desc="Processing batches"):
+        print("anotha one")
+        batch_toks = batch_toks.to(device)
+        batch_mask = batch_mask.bool().to(device)
         activations = get_activations(model,
                                       model_name,
-                                      toks.to(device),
-                                      (toks != alphabet['<pad>']).to(device),
+                                      batch_toks,
+                                      batch_mask,
                                       layers=layers)
         for layer in layers:
             all_activations[layer].append(activations[layer])
@@ -133,7 +159,7 @@ def embed_fasta_file_for_all_layers_glm(
         metadata = {
             "model": model_name,
             "total_tokens": total_tokens,
-            "d_model": model.config.hidden_size,
+            "d_model": model.config.dim,
             "dtype": str(layer_activations.dtype),
             "layer": layer,
             "shard": shard_num,
@@ -247,6 +273,7 @@ def process_shard_range(
     start_shard: int | None = None,
     end_shard: int | None = None,
     corrupt_esm: bool = False,
+    batch_size: int = 16,
 ):
     """
     Process a range of FASTA shards through an ESM model.
@@ -290,7 +317,7 @@ def process_shard_range(
                 layers=layers,
                 shard_num=i,
             )
-        elif esm_model_name[:3] == "gLM2":
+        elif esm_model_name[:4] == "gLM2":
             #TODO: call GLM version
             embed_fasta_file_for_all_layers_glm(
                 model_name=esm_model_name,
@@ -298,6 +325,7 @@ def process_shard_range(
                 output_dir=output_dir,
                 layers=layers,
                 shard_num=i,
+                batch_size=batch_size,
             )
         else:
             raise ValueError("Model not supported")
