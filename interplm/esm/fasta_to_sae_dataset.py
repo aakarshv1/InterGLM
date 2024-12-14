@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import List, Tuple
 
-from data_processing import read_fasta
+from data_processing.utils import read_fasta
 
 import numpy as np
 import torch
