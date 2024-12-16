@@ -306,6 +306,8 @@ def process_shard_range(
         start_shard = 0
     if end_shard is None:
         end_shard = len(fasta_files) - 1
+    # convert to list of every other layer from 1 to 30 
+    layers = [int(layer) for layer in range(1, layers[0], 2)]
 
     for i in range(start_shard, end_shard + 1):
         if esm_model_name[:3] == "esm":
