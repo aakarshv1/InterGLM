@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from esm import FastaBatchedDataset, pretrained
 from tqdm import tqdm
-from transformers import AutoTokenizer, EsmForMaskedLM
+from transformers import AutoTokenizer, AutoModel, EsmForMaskedLM
 
 from interplm.utils import get_device
 
@@ -74,31 +74,85 @@ def embed_list_of_multimodal_seqs(
     truncation_seq_length: int = None,
     device: torch.device = None,
 ):
+    # NOTE: manually set, should be a parameter
+    batch_size = 16
     if device is None:
         device = get_device()
 
     # Load model and tokenizer
     if model_name == "gLM2_150M":
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_150M", trust_remote_code=True)
-        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+        model = AutoModel.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
     elif model_name == "gLM2_650M_embed":
         # same as above, but use path "tattabio/gLM2_650M_embed"
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_650M_embed", trust_remote_code=True)
-        model = EsmForMaskedLM.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
+        model = AutoModel.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
     else:
         raise ValueError(f"Model {model_name} not supported")
     model = model.to(device)
     model.eval()
 
-    # TODO: handle pre-forward pass attn_mask and post embedding 
-    # Tokenize sequence
-    inputs = tokenizer(seq_list, return_tensors='pt', padding=True)
-    with torch.no_grad():
-        embeddings = model(inputs.input_ids.cuda(), output_hidden_states=True)
-        embeddings = embeddings.hidden_states[layer]  
+    alphabet = tokenizer.get_vocab()
+    ## Concatenate sequences with "<+>" separator
+    seq_lst = ["<+>" + sequence for sequence in seq_list]
+    seq_lst = [sequence[:truncation_seq_length] for sequence in seq_lst]
 
-    assert embeddings.shape[0] == len(seq_list), "Mismatch between input sequences and embeddings"
-    return embeddings
+    print("Number of sequences: " + str(len(seq_lst)))
+
+    encodings = tokenizer(seq_lst, return_tensors='pt', padding=True)
+    
+    # reshape tokens into batches of size (num batches, batch_size, seq_length)
+    #print(encodings)
+    toks = encodings.input_ids
+    attention_mask = encodings.attention_mask
+
+    dummy_seqs_needed = (len(toks) // batch_size + 1) * batch_size - len(toks)
+    
+    # Create dummy sequences for padding
+    dummy_toks = torch.full((dummy_seqs_needed, toks.shape[1]), alphabet['<pad>'], dtype=torch.long)
+    dummy_attention_mask = torch.zeros((dummy_seqs_needed, attention_mask.shape[1]), dtype=torch.long)
+    
+    # Concatenate dummy sequences to input_ids and attention_mask
+    toks = torch.cat([toks, dummy_toks], dim=0)
+    attention_mask = torch.cat([attention_mask, dummy_attention_mask], dim=0)
+
+    # Reshape into batches
+    reshaped_toks = toks.view(-1, batch_size, toks.shape[1])
+    reshaped_attention_mask = attention_mask.view(-1, batch_size, attention_mask.shape[1])
+
+    assert reshaped_toks.shape[0] == len(seq_lst) // batch_size + 1 if len(seq_lst) % batch_size != 0 else len(seq_lst) // batch_size
+    all_embeddings = [None] * len(seq_lst)  # Pre-allocate list
+
+    batch_idx = 0 # batch index
+
+    # NOTE: handle pre-forward pass attn_mask (created above) and post embedding (remove padding based on individual seqlen)
+    for batch_toks, batch_mask in tqdm(zip(reshaped_toks, reshaped_attention_mask), desc="Processing batches"):
+        # make sure last batch isn't full size if less than 16
+        if len(seq_lst) - batch_idx * batch_size < batch_size:
+            batch_toks = batch_toks[:len(seq_lst) - batch_idx * 16]
+            batch_mask = batch_mask[:len(seq_lst) - batch_idx * 16]
+        with torch.no_grad():
+            embeddings = model(batch_toks.cuda(), attention_mask=batch_mask.cuda(), output_hidden_states=True)
+            embeddings = embeddings.hidden_states[layer]  
+
+        # Remove padding and special tokens, and store in the correct position
+        for i, tokenized_seq in enumerate(batch_toks):
+            #print(batch_toks.shape)
+            seq_len = (tokenized_seq != alphabet['<pad>']).sum()
+            # Extract original index based on current batch iter + seq index within batch
+            seq_idx = batch_idx * batch_size + i
+            #print(seq_idx)
+            all_embeddings[seq_idx] = embeddings[i, :seq_len] # include '<+>' + sequence, exclude padding
+
+        batch_idx += 1  # Increment batch index
+
+        torch.cuda.empty_cache()
+
+    # Verify that all sequences have been processed
+    assert all(
+        emb is not None for emb in all_embeddings), "Some sequences were not processed"
+
+    return all_embeddings
 
 
 def embed_list_of_prot_seqs(

@@ -135,11 +135,15 @@ def expand_features(df: pd.DataFrame,
         current_index = 1
         logger.info(f"Processing binary column: {col}")
 
+    if df[col].isnull().all():
+        logger.warning(f"Binary column '{col}' is all N/A. Assigning binary feature as all 0.")
+        new_columns[f"{col}_binary"] = df["Length"].apply(lambda x: [False] * x)
+    else:
         col_name = df[col].dropna().iloc[0].split(" ")[0]
         for _, row in df.iterrows():
             result, current_index = process_binary_feature(
-                row[col], col_name, row["Length"], current_index
-            )
+                    row[col], col_name, row["Length"], current_index
+                )
             new_columns[f"{col}_binary"].append(result)
 
     # Process interaction features

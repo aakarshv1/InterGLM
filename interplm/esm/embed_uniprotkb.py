@@ -79,8 +79,7 @@ def embed_uniprotkb_shard(
     output_dir = output_file.parent
     output_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(input_file, sep="\t").set_index("Entry")
-    print(f"Embedding {len(df)} proteins from Uniprot database using {
-          esm_name}...")
+    print(f"Embedding {len(df)} proteins from Uniprot database using {esm_name}...")
     df_of_prot_seqs_to_pt(
         protein_df=df,
         esm_name=esm_name,
