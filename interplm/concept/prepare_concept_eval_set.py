@@ -23,11 +23,14 @@ def make_eval_subset(shards_to_include: List[int],
     domains to be included in the evaluation set.
 
     Args:
-        shards_to_include: List of shard indices to include in the evaluation set
+        shards_to_include: 2 element list indicating start (inclusive) and end (exclusive) inices
+            of shards to include
         uniprot_dir: Path to the UniprotKB directory
         min_aa_per_concept: Minimum number of amino acids per concept to include
         min_domains_per_concept: Minimum number of domains per concept to include
     """
+
+    shards_to_include = list(range(shards_to_include[0], shards_to_include[1]))
 
     n_positive_aa_per_concept = []
     n_positive_domains_per_concept = []
@@ -42,6 +45,8 @@ def make_eval_subset(shards_to_include: List[int],
 
     with open(uniprot_dir / "uniprotkb_aa_concepts_columns.txt") as f:
         all_concept_names = f.read().splitlines()
+
+    # import pdb; pdb.set_trace()
 
     indices_of_many_domains = np.where(np.array(n_positive_domains_per_concept).sum(axis=0) > min_domains_per_concept)[0]
     indices_of_many_aa = np.where(np.array(n_positive_aa_per_concept).sum(axis=0) > min_aa_per_concept)[0]

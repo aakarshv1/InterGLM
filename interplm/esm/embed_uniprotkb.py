@@ -40,6 +40,9 @@ def df_of_prot_seqs_to_pt(
             toks_per_batch=toks_per_batch,
             device=device,
         )
+        # print("Before:", torch.cat([emb for emb in embeddings], dim=0).shape)
+        all_embeddings = torch.cat([emb[1:] for emb in embeddings], dim=0)
+        # print("After:", all_embeddings.shape)
     else:
         embeddings = embed_list_of_prot_seqs(
             protein_seq_list=protein_seq_list,
@@ -49,8 +52,7 @@ def df_of_prot_seqs_to_pt(
             device=device,
             corrupt=corrupt,
         )
-    # Convert list of embeddings to a single tensor
-    all_embeddings = torch.cat([emb for emb in embeddings], dim=0)
+        all_embeddings = torch.cat([emb for emb in embeddings], dim=0)
     # Save the tensor
     torch.save(all_embeddings, output_path)
     print(f"Embedding computation complete. Saved to {output_path}")
