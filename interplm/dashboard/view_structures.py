@@ -48,8 +48,7 @@ def get_single_chain_afdb_structure(uniprot_id: str):
     # Check if the file already exists
     if not os.path.exists(pdb_file_path):
         # If it doesn't exist, download it
-        afdb_path = f"https://alphafold.ebi.ac.uk/files/AF-{
-            uniprot_id}-F1-model_v4.pdb"
+        afdb_path = f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v4.pdb"
 
         # Download the structure using requests
         try:
@@ -80,8 +79,7 @@ def get_pdb_info_as_string_from_afdb(uniprot_id: str):
     # Check if the file already exists
     if not os.path.exists(pdb_file_path):
         # If it doesn't exist, download it
-        afdb_path = f"https://alphafold.ebi.ac.uk/files/AF-{
-            uniprot_id}-F1-model_v4.pdb"
+        afdb_path = f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v4.pdb"
 
         # Download the structure using requests
         try:

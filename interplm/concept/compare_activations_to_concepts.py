@@ -110,6 +110,7 @@ def calc_metrics_sparse(
         for concept_idx in range(n_concepts):
             concept_labels = per_token_labels_sparse[:, concept_idx]
 
+
             # Calculate true positives
             tp_sparse = sae_feats_binarized.multiply(concept_labels > 0)
             tp[concept_idx, :, threshold_idx] = np.asarray(tp_sparse.sum(axis=0)).ravel()
@@ -346,6 +347,8 @@ def analyze_concepts(sae_dir: Path,
         eval_set_metadata["path_to_shards"][str(shard)])
     per_token_labels = per_token_labels[:,
                                         eval_set_metadata["indices_of_concepts_to_keep"]]
+    
+    # import pdb; pdb.set_trace()
 
     # Set up device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

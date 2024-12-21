@@ -32,8 +32,7 @@ def visualize_protein_feature(
 
     # Precompute all colors
     colors = [aa_to_color.get(aa, (200, 200, 200, 1)) for aa in sequence]
-    color_strs = [f"rgba({int(c[0]*255)},{int(c[1]*255)
-                                          },{int(c[2]*255)},{c[3]})" for c in colors]
+    color_strs = [f"rgba({int(c[0]*255)},{int(c[1]*255)},{int(c[2]*255)},{c[3]})" for c in colors]
 
     for j, (aa, feat) in enumerate(zip(sequence, feature_acts)):
         fig.add_trace(go.Scatter(
@@ -138,8 +137,7 @@ def plot_activation_histogram(
 
     # Create hover text
     hover_text = [
-        f"{x_title.capitalize()}: {
-            bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}<br>"
+        f"{x_title.capitalize()}: {bin_edges[i]:.2f} - {bin_edges[i+1]:.2f}<br>"
         f"Count: {count} features<br>"
         f"Example feat idx: {features}"
         for i, (count, features) in enumerate(zip(hist, example_feats))

@@ -38,13 +38,14 @@ class DashboardState:
 class ProteinFeatureVisualizer:
     def __init__(self):
         self.dash_data_all_layer, self.protein_metadata, self.device = self._load_data()
+        print(self.dash_data_all_layer.keys())
 
     @staticmethod
     @st.cache_resource
     def _load_data():
         """Load and cache the dashboard data"""
         dashboard_cache_path = DASHBOARD_CACHE_DIR / "dashboard_cache.pkl"
-        protein_metadata_path = DASHBOARD_CACHE_DIR / "swiss-prot_metadata.tsv.gz"
+        protein_metadata_path = DASHBOARD_CACHE_DIR / "proteins.tsv.gz"
         protein_metadata = pd.read_csv(
             protein_metadata_path, sep="\t", index_col=0)
 
@@ -89,8 +90,7 @@ class ProteinFeatureVisualizer:
             step=1,
             value=st.session_state[f'feature_id_{layer}'],
             key=f'feature_input_{layer}',
-            help=f"Enter a specific feature ID to explore (0 - {
-                n_features-1:,})"
+            help=f"Enter a specific feature ID to explore (0 - {n_features-1:,})"
         )
 
         # Update session state if number input changes
@@ -109,9 +109,10 @@ class ProteinFeatureVisualizer:
         elif len(available_layers) == 1:
             layer = available_layers[0]
         else:
+            preferred_index = available_layers.index(3) if 3 in available_layers else 0
             layer = st.sidebar.selectbox("Select ESM embedding layer",
-                                         available_layers,
-                                         index=3 if 3 in available_layers else available_layers[0])
+                                        available_layers,
+                                        index=preferred_index)
 
         dash_data = self.dash_data_all_layer[layer]
         feature_id = self.select_feature(layer)
@@ -244,10 +245,8 @@ class ProteinFeatureVisualizer:
         """Display feature-wide statistics section"""
         dash_data = self.dash_data_all_layer[layer]
 
-        st.header(f"Metrics on all SAE features from ESM layer {
-                  layer}", help=help_notes["metrics"])
-        st.markdown(f"**(Highlighting selected feature <span style='color: #00DDFF'>f/{
-                    feature_id}**</span>)", unsafe_allow_html=True, help="Feature and layer selection can be changed in the sidebar.")
+        st.header(f"Metrics on all SAE features from ESM layer {layer}", help=help_notes["metrics"])
+        st.markdown(f"**(Highlighting selected feature <span style='color: #00DDFF'>f/{feature_id}**</span>)", unsafe_allow_html=True, help="Feature and layer selection can be changed in the sidebar.")
 
         col1, col2, col3, col4 = st.columns(4)
 
@@ -273,17 +272,14 @@ class ProteinFeatureVisualizer:
             col3, col1, col2 = st.columns(3)
             with col3:
                 # write dash_data["LLM Autointerp"].loc[feature_id]
-                description_score = f"{
-                    dash_data['LLM Autointerp'].loc[feature_id]['Correlation']:.2f}"
-                st.subheader(f"**Language Model Summary for f/{feature_id} (score={
-                             description_score})**", help=help_notes["autointerp"])
+                description_score = f"{dash_data['LLM Autointerp'].loc[feature_id]['Correlation']:.2f}"
+                st.subheader(f"**Language Model Summary for f/{feature_id} (score={description_score})**", help=help_notes["autointerp"])
                 st.write(
                     f"{dash_data['LLM Autointerp'].loc[feature_id]['Summary']}")
         else:
             col1, col2 = st.columns(2)
         with col1:
-            st.subheader(f"**Feature Activation Distribution for f/{
-                         feature_id}**", help=help_notes["act_distribution"])
+            st.subheader(f"**Feature Activation Distribution for f/{feature_id}**", help=help_notes["act_distribution"])
             plot_of_feat_acts = plot_activations_for_single_feat(
                 dash_data["SAE_features"], feature_id
             )
@@ -426,8 +422,7 @@ class ProteinFeatureVisualizer:
             .drop_duplicates(["concept"], keep="first")
         )
 
-        st.subheader(f"**Concepts Identified in Layer {
-                     layer}**", help="Concepts are defined based on Swiss-Prot annotations. For each concept identified in the SAE features, we list one example feature that activates on this concept. Details on concept-feature pairing is described in the InterPLM paper.")
+        st.subheader(f"**Concepts Identified in Layer {layer}**", help="Concepts are defined based on Swiss-Prot annotations. For each concept identified in the SAE features, we list one example feature that activates on this concept. Details on concept-feature pairing is described in the InterPLM paper.")
         display_cols = {
             "concept": "Concept",
             "feature": "Feature",
@@ -464,15 +459,14 @@ class ProteinFeatureVisualizer:
                     device=self.device
                 )
                 features = encode_subset_of_feats(dash_data["SAE"], embeddings, [
-                                                  feature_id]).cpu().numpy().flatten()
+                                                  feature_id], device=self.device).cpu().numpy().flatten()
 
                 # Display protein header
                 if is_custom_seq:
                     st.subheader(f"Custom Sequence {idx+1}")
                 else:
 
-                    st.subheader(f"UniProt protein ([{
-                                 protein['Entry']}](https://www.uniprot.org/uniprot/{protein['Entry']}))")
+                    st.subheader(f"UniProt protein ([{protein['Entry']}](https://www.uniprot.org/uniprot/{protein['Entry']}))")
                     st.markdown(protein["Protein names"])
 
                 if idx == 0:
@@ -502,8 +496,7 @@ class ProteinFeatureVisualizer:
                                 features) if val > 0.4] if add_highlight else None
                         )
             except Exception as e:
-                st.error(f"Error visualizing protein {
-                         protein['Entry']}: {str(e)}")
+                st.error(f"Error visualizing protein {protein['Entry']}: {str(e)}")
                 continue
 
     def _render_protein_structure(

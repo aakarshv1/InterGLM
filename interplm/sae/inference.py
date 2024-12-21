@@ -59,7 +59,8 @@ def load_model(
 def encode_subset_of_feats(
     sae: AutoEncoder,
     esm_embds: Tensor,
-    feat_list: List[int]
+    feat_list: List[int],
+    device: torch.device = None
 ) -> Tensor:
     """
     Encode a batch of embeddings using a subset of features from the SAE.
@@ -70,11 +71,19 @@ def encode_subset_of_feats(
     :param feat_list: List of feature indices to use from the encoder
     :return: Encoded features for the specified subset
     """
+    if device is None:
+        device = esm_embds.device  # Default to the device of the embeddings
+
+    # Ensure all model components and data are on the same device
+    esm_embds = esm_embds.to(device)
+    sae.to(device)  # Ensure the model is on the correct device
+
     with torch.no_grad():
         features = torch.nn.ReLU()(
             ((esm_embds - sae.bias) @ sae.encoder.weight[feat_list, :].T) +
             sae.encoder.bias[feat_list]
         )
+
     return features
 
 

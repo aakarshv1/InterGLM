@@ -260,11 +260,11 @@ def embed_single_sequence(
     # Load model and tokenizer
     if model_name == "gLM2_150M":
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_150M", trust_remote_code=True)
-        model = AutoModel.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda()
+        model = AutoModel.from_pretrained("tattabio/gLM2_150M", torch_dtype=torch.bfloat16, trust_remote_code=True).to(device)
     elif model_name == "gLM_650M_embed":
         # same as above, but use path "tattabio/gLM2_650M_embed"
         tokenizer = AutoTokenizer.from_pretrained("tattabio/gLM2_650M_embed", trust_remote_code=True)
-        model = AutoModel.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).cuda
+        model = AutoModel.from_pretrained("tattabio/gLM2_650M_embed", torch_dtype=torch.bfloat16, trust_remote_code=True).to(device)
     else:
         tokenizer = AutoTokenizer.from_pretrained(f"facebook/{model_name}")
         model = EsmForMaskedLM.from_pretrained(f"facebook/{model_name}")
@@ -275,7 +275,7 @@ def embed_single_sequence(
     if model_name == "gLM2_150M" or model_name == "gLM_650M_embed":
         inputs = tokenizer([sequence], return_tensors='pt')
         with torch.no_grad():
-            embeddings = model(inputs.input_ids.cuda(), output_hidden_states=True)
+            embeddings = model(inputs.input_ids.to(device), output_hidden_states=True)
             embeddings = embeddings.hidden_states[layer]  
             embeddings = embeddings[0]
     else:
@@ -287,6 +287,6 @@ def embed_single_sequence(
             # Get embeddings from specified layer
             embeddings = outputs.hidden_states[layer]
             # Remove batch dimension and special tokens - TODO: check if diff for GLM2
-            embeddings = embeddings[0, 1:-1]
+            embeddings = embeddings[0, 1:]
 
     return embeddings
