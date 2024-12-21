@@ -1,3 +1,5 @@
+## This is a fork of InterPLM that uses [gLM2](https://github.com/TattaBio/gLM2), a multimodal genomic language model, instead of a PLM. The commands in this README are not up to date but we are currently updating them.
+
 # InterPLM: Discovering Interpretable Features in Protein Language Models via Sparse Autoencoders
 ![Example feature activation patterns](https://github.com/user-attachments/assets/fc486fea-9303-45d3-aab2-9f9ceb51ac26)
 
